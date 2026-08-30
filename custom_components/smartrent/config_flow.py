@@ -10,7 +10,7 @@ from homeassistant.helpers import aiohttp_client
 from smartrent import async_login
 from smartrent.utils import InvalidAuthError
 
-from .const import DOMAIN
+from .const import CONF_REFRESH_TOKEN, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,7 +41,10 @@ class SmartRentFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             username = user_input[CONF_USERNAME]
             password = user_input[CONF_PASSWORD]
             tfa_token = user_input.get(CONF_TOKEN)
-            await async_login(username, password, session, tfa_token=tfa_token)
+            api = await async_login(username, password, session, tfa_token=tfa_token)
+            # Save the refresh token so future setups can reuse it instead
+            # of replaying this (single-use) TFA code.
+            user_input[CONF_REFRESH_TOKEN] = api.client.get_refresh_token()
         except InvalidAuthError as exc:
             _LOGGER.error(f"Invalid auth: {exc}")
             return {"base": "invalid_auth"}

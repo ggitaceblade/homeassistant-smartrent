@@ -18,6 +18,7 @@ from smartrent.utils import InvalidAuthError
 
 from .const import (
     CONF_PASSWORD,
+    CONF_REFRESH_TOKEN,
     CONF_TOKEN,
     CONF_USERNAME,
     DOMAIN,
@@ -37,10 +38,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     username = entry.data.get(CONF_USERNAME)
     password = entry.data.get(CONF_PASSWORD)
     tfa_token = entry.data.get(CONF_TOKEN)
+    refresh_token = entry.data.get(CONF_REFRESH_TOKEN)
+
+    def _persist_refresh_token(tokens: dict) -> None:
+        """Keep the config entry's refresh token current.
+
+        Lets a future restart reuse it instead of replaying the
+        original (single-use) TFA code, which only ever works once.
+        """
+        new_refresh_token = tokens.get("refresh_token")
+        if new_refresh_token and new_refresh_token != entry.data.get(
+            CONF_REFRESH_TOKEN
+        ):
+            hass.config_entries.async_update_entry(
+                entry, data={**entry.data, CONF_REFRESH_TOKEN: new_refresh_token}
+            )
 
     session = async_get_clientsession(hass)
     try:
-        api = await async_login(username, password, session, tfa_token=tfa_token)
+        api = await async_login(
+            username,
+            password,
+            session,
+            tfa_token=tfa_token,
+            refresh_token=refresh_token,
+            token_update_callback=_persist_refresh_token,
+        )
     except InvalidAuthError as exception:
         raise ConfigEntryAuthFailed("Credentials expired!") from exception
     except ClientConnectorError as exception:
@@ -52,7 +75,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    entry.add_update_listener(async_reload_entry)
     return True
 
 
